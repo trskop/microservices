@@ -1,0 +1,59 @@
+name:                   microservices
+version:                0.1.0.0
+synopsis:               TODO
+description:
+  TODO
+
+homepage:               https://github.com/trskop/microservices
+bug-reports:            https://github.com/trskop/microservices/issues
+license:                BSD3
+license-file:           LICENSE
+author:                 Peter Trško
+maintainer:             peter.trsko@gmail.com
+copyright:              (c) 2016, Peter Trško
+category:               Control
+build-type:             Simple
+cabal-version:          >=1.10
+
+extra-source-files:
+    ChangeLog.md
+  , README.md
+
+flag pedantic
+  description:          Pass additional warning flags to GHC.
+  default:              False
+  manual:               True
+
+library
+  hs-source-dirs:       src
+  exposed-modules:      Microservices
+  -- other-modules:
+
+  default-language:     Haskell2010
+  other-extensions:
+      RankNTypes
+    , PolyKinds
+    , DataKinds
+    , FlexibleContexts
+    , FlexibleInstances
+    , MultiParamTypeClasses
+    , TemplateHaskell
+    , TypeFamilies
+    , GADTs
+    , NoImplicitPrelude
+    , TypeOperators
+    , UndecidableInstances
+
+  build-depends:
+      base >=4.8 && <4.9
+    , overloaded-records >=0.4.1 && <1
+
+    -- Temporary:
+    , data-default-class ==0.0.*
+
+  ghc-options:          -Wall
+  if flag(pedantic)
+    ghc-options:
+      -fwarn-tabs
+      -fwarn-implicit-prelude
+--    -Werror
