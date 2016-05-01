@@ -80,9 +80,7 @@ putLogMsg = writeChan . getLoggerChan . get logger
 
 -- {{{ Client Service ---------------------------------------------------------
 
-type Client r = Svc r IO "Client" ClientRuntimeConfig
-
-type ClientRuntimeConfig =
+type Client r = Svc r IO "Client"
     '[ "timeout" ::: Int
     , "count" ::: Int
     , "logger" ::: Logger
