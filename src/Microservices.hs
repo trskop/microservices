@@ -53,13 +53,11 @@ type ServiceMain r m name params = Proxy name -> Rec params r -> m ()
 data Svc (r :: *) (m :: * -> *) (name :: Symbol) (params :: [(Symbol, *)])
   where
     Svc :: KnownSymbol name
-        => Proxy name
-        -> ServiceMain r m name params
+        => ServiceMain r m name params
         -> Svc r m name params
 
--- | Smart constructor for 'Svc'.
-svc :: KnownSymbol name => ServiceMain r m name params -> Svc r m name params
-svc f = Svc Proxy f
+getSvcName :: Svc r m name params -> Proxy name
+getSvcName _svc = Proxy
 
 -- | Run service using provided configuration. This function is useful for
 -- debugging.
@@ -68,7 +66,7 @@ runSvc
     => Svc cfg m name params
     -> cfg
     -> m ()
-runSvc (Svc svcName f) cfg = f svcName (Rec cfg)
+runSvc svc@(Svc f) cfg = f (getSvcName svc) (Rec cfg)
 
 -- | Collection of services.
 data Services r m (names :: [Symbol]) (params :: [[(Symbol, *)]]) where
@@ -116,8 +114,8 @@ instance
     type RuntimeConfiguration (Svc r m name params -> b) = r
     type ExecutionMonad (Svc r m name params -> b) = m
 
-    foldServices svcs cfg (Svc svcName svcMain) =
-        foldServices (AService svcName svcMain svcs) cfg
+    foldServices svcs cfg svc@(Svc svcMain) =
+        foldServices (AService (getSvcName svc) svcMain svcs) cfg
 
 -- {{{ ForkIO -----------------------------------------------------------------
 
@@ -173,7 +171,7 @@ overloadedRecord def ''C
 labels ["restBaseUrl", "restCredentials", "logger", "verbose"]
 
 apiClient :: ApiClient r
-apiClient = svc $ \_svcName (Rec cfg) -> do
+apiClient = Svc $ \_svcName (Rec cfg) -> do
     print (get restBaseUrl cfg)
     print (get restCredentials cfg)
     print (get logger cfg)
@@ -181,7 +179,7 @@ apiClient = svc $ \_svcName (Rec cfg) -> do
 type Logging r = Svc r IO "Logging" '["logger" ::: Logger, "verbose" ::: Bool]
 
 loggingService :: Logging r
-loggingService = svc $ \_svcName (Rec cfg) -> do
+loggingService = Svc $ \_svcName (Rec cfg) -> do
     print (get logger cfg)
     print (get verbose cfg)
 
