@@ -26,8 +26,6 @@
 module Microservices
   where
 
-
-
 import Control.Applicative (Applicative((<*>), pure))
 import Control.Concurrent (ThreadId, forkIO)
 import Data.Function
@@ -131,24 +129,23 @@ instance RunServices (ForkIO r) where
     type RuntimeConfiguration (ForkIO r) = r
     type ExecutionMonad (ForkIO r) = IO
 
-    foldServices svcs cfg = ForkIO go
+    foldServices svcs cfg = ForkIO $ case svcs of
+        NoServices -> pure []
+        AService svcName svcMain svcs' ->
+            (mkResult svcName . Just)
+                <$> forkIO (svcMain svcName (Rec cfg))
+                <*> runForkIO (foldServices svcs' cfg)
+        ServiceIsNotImplemented svcName _ svcs' ->
+            mkResult svcName Nothing <$> runForkIO (foldServices svcs' cfg)
       where
-        go = case svcs of
-            NoServices -> pure []
-            AService svcName svcMain svcs' ->
-                (mkResult svcName . Just)
-                    <$> forkIO (svcMain svcName (Rec cfg))
-                    <*> runForkIO (foldServices svcs' cfg)
-            ServiceIsNotImplemented svcName _ svcs' ->
-                mkResult svcName Nothing <$> runForkIO (foldServices svcs' cfg)
-
         mkResult
             :: KnownSymbol name
             => Proxy name
             -> Maybe ThreadId
             -> [(SomeSymbol, Maybe ThreadId)]
             -> [(SomeSymbol, Maybe ThreadId)]
-        mkResult svcName possiblyThreadId = ((SomeSymbol svcName, possiblyThreadId) :)
+        mkResult svcName possiblyThreadId =
+            ((SomeSymbol svcName, possiblyThreadId) :)
 
 -- {{{ Test -------------------------------------------------------------------
 
@@ -162,8 +159,7 @@ type ApiClientRuntimeConfig =
     , "logger" ::: Logger
     ]
 
-type ApiClient r =
-    Svc r IO "ApiClient" ApiClientRuntimeConfig
+type ApiClient r = Svc r IO "ApiClient" ApiClientRuntimeConfig
 
 data C = C
     { _restBaseUrl :: BaseUrl
