@@ -1,8 +1,12 @@
 name:                   microservices
 version:                0.1.0.0
-synopsis:               TODO
+synopsis:
+  Microframework for structuring application in terms of microservices.
 description:
-  TODO
+  Microframework for structuring Haskell application in terms of microservices.
+  There is no restriction on how these services are executed. They can be
+  represented by lightweight threads, Claoud Haskell processes or even
+  fork()-exec()-ed.
 
 homepage:               https://github.com/trskop/microservices
 bug-reports:            https://github.com/trskop/microservices/issues

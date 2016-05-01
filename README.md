@@ -14,7 +14,10 @@
 
 ## Description
 
-TODO
+Microframework for structuring Haskell application in terms of microservices.
+There is no restriction on how these services are executed. They can be
+represented by lightweight threads, Claoud Haskell processes or even
+fork()-exec()-ed.
 
 
 ## License
