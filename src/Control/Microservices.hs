@@ -23,7 +23,7 @@
 --               UndecidableInstances
 --
 -- TODO
-module Microservices
+module Control.Microservices
   where
 
 import Control.Applicative (Applicative((<*>), pure))
@@ -135,3 +135,5 @@ instance RunServices (ForkIO r) where
             -> [(SomeSymbol, Maybe ThreadId)]
         mkResult svcName possiblyThreadId =
             ((SomeSymbol svcName, possiblyThreadId) :)
+
+-- }}} ForkIO -----------------------------------------------------------------

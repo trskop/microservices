@@ -56,7 +56,7 @@ import Data.OverloadedLabels.TH (labels)
 import Data.OverloadedRecords ((:::), R, Rec(Rec), get)
 import Data.OverloadedRecords.TH (overloadedRecord)
 
-import Microservices
+import Control.Microservices
 
 
 data Logger = Logger {getLoggerChan :: Chan String}

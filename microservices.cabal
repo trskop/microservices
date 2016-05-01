@@ -26,7 +26,7 @@ flag pedantic
 
 library
   hs-source-dirs:       src
-  exposed-modules:      Microservices
+  exposed-modules:      Control.Microservices
   -- other-modules:
 
   default-language:     Haskell2010
