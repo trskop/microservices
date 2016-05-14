@@ -118,14 +118,29 @@ instance RunServices (ForkIO r) where
     type RuntimeConfiguration (ForkIO r) = r
     type ExecutionMonad (ForkIO r) = IO
 
-    foldServices svcs cfg = ForkIO $ case svcs of
+    foldServices = foldForkIO
+
+foldForkIO
+    :: Rs ps r
+    => Services r IO names ps
+    -> r
+    -> ForkIO r
+foldForkIO s = ForkIO . loop s
+  where
+    loop
+        :: Rs ps r
+        => Services r IO names ps
+        -> r
+        -> IO [(SomeSymbol, Maybe ThreadId)]
+    loop svcs cfg = case svcs of
         NoServices -> pure []
         AService svcName svcMain svcs' ->
             (mkResult svcName . Just)
+                -- Consider using "forkFinally" construct.
                 <$> forkIO (svcMain svcName (Rec cfg))
-                <*> runForkIO (foldServices svcs' cfg)
+                <*> loop svcs' cfg
         ServiceIsNotImplemented svcName _ svcs' ->
-            mkResult svcName Nothing <$> runForkIO (foldServices svcs' cfg)
+            mkResult svcName Nothing <$> loop svcs' cfg
       where
         mkResult
             :: KnownSymbol name
