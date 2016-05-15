@@ -17,10 +17,7 @@
 --
 -- Maintainer:   peter.trsko@gmail.com
 -- Stability:    experimental
--- Portability:  DataKinds, FlexibleContexts, FlexibleInstances, GADTs,
---               MultiParamTypeClasses, NoImplicitPrelude, PolyKinds,
---               TemplateHaskell, TypeFamilies, TypeOperators,
---               UndecidableInstances
+-- Portability:  GHC specific language extensions.
 --
 -- TODO
 module Control.Microservices
@@ -31,56 +28,17 @@ import Control.Concurrent (ThreadId, forkIO)
 import Data.Function
 import Data.Functor ((<$>))
 import Data.Maybe (Maybe(Just, Nothing))
-import Data.Proxy (Proxy(Proxy))
+import Data.Proxy (Proxy{-(Proxy)-})
 import GHC.TypeLits (KnownSymbol, SomeSymbol(SomeSymbol), Symbol)
 import System.IO (IO)
 
-import Data.OverloadedRecords (R, Rec(Rec))
+import Data.OverloadedRecords (R, Rs, Rec(Rec))
 
-
-type ServiceMain r m name params = Proxy name -> Rec params r -> m ()
-
--- | Represents one service.
-data Svc (r :: *) (m :: * -> *) (name :: Symbol) (params :: [(Symbol, *)])
-  where
-    Svc :: KnownSymbol name
-        => ServiceMain r m name params
-        -> Svc r m name params
-
-getSvcName :: Svc r m name params -> Proxy name
-getSvcName _svc = Proxy
-
--- | Run service using provided configuration. This function is useful for
--- debugging.
-runSvc
-    :: R params cfg
-    => Svc cfg m name params
-    -> cfg
-    -> m ()
-runSvc svc@(Svc f) cfg = f (getSvcName svc) (Rec cfg)
-
--- | Collection of services.
-data Services r m (names :: [Symbol]) (params :: [[(Symbol, *)]]) where
-    NoServices :: Services r m '[] '[]
-
-    ServiceIsNotImplemented
-        :: KnownSymbol name
-        => Proxy name
-        -> Proxy ps
-        -> Services r m names params
-        -> Services r m (name ': names) (ps ': params)
-
-    AService
-        :: KnownSymbol name
-        => Proxy name
-        -> ServiceMain r m name ps
-        -> Services r m names params
-        -> Services r m (name ': names) (ps ': params)
-
--- | Union\/concatenation of record constraints.
-type family Rs (cs :: [[(Symbol, *)]]) (r :: *) where
-    Rs '[]       r = R '[] r
-    Rs (c ': cs) r = (R c r, Rs cs r)
+import Control.Microservices.Internal.Stack (HasServices, ServiceStack, Svc(..))
+import qualified Control.Microservices.Internal.Stack as Stack
+    ( ServiceStack(Empty, Next, Push)
+    , peekSvcName
+    )
 
 class RunServices e where
     type RuntimeConfiguration e :: *
@@ -88,12 +46,12 @@ class RunServices e where
 
     foldServices
         :: Rs params (RuntimeConfiguration e)
-        => Services (RuntimeConfiguration e) (ExecutionMonad e) names params
+        => ServiceStack (RuntimeConfiguration e) (ExecutionMonad e) names params
         -> RuntimeConfiguration e
         -> e
 
 runServices :: RunServices e => RuntimeConfiguration e -> e
-runServices = foldServices NoServices
+runServices = foldServices Stack.Empty
 
 instance
     ( RunServices b
@@ -105,8 +63,8 @@ instance
     type RuntimeConfiguration (Svc r m name params -> b) = r
     type ExecutionMonad (Svc r m name params -> b) = m
 
-    foldServices svcs cfg svc@(Svc svcMain) =
-        foldServices (AService (getSvcName svc) svcMain svcs) cfg
+    foldServices svcs cfg (Svc svcMain) =
+        foldServices (Stack.Push svcMain svcs) cfg
 
 -- {{{ ForkIO -----------------------------------------------------------------
 
@@ -122,24 +80,24 @@ instance RunServices (ForkIO r) where
 
 foldForkIO
     :: Rs ps r
-    => Services r IO names ps
+    => ServiceStack r IO names ps
     -> r
     -> ForkIO r
 foldForkIO s = ForkIO . loop s
   where
     loop
         :: Rs ps r
-        => Services r IO names ps
+        => ServiceStack r IO names ps
         -> r
         -> IO [(SomeSymbol, Maybe ThreadId)]
     loop svcs cfg = case svcs of
-        NoServices -> pure []
-        AService svcName svcMain svcs' ->
+        Stack.Empty -> pure []
+        Stack.Push svcMain svcs' -> let svcName = Stack.peekSvcName svcs in
             (mkResult svcName . Just)
                 -- Consider using "forkFinally" construct.
                 <$> forkIO (svcMain svcName (Rec cfg))
                 <*> loop svcs' cfg
-        ServiceIsNotImplemented svcName _ svcs' ->
+        Stack.Next svcs' -> let svcName = Stack.peekSvcName svcs in
             mkResult svcName Nothing <$> loop svcs' cfg
       where
         mkResult
@@ -152,3 +110,45 @@ foldForkIO s = ForkIO . loop s
             ((SomeSymbol svcName, possiblyThreadId) :)
 
 -- }}} ForkIO -----------------------------------------------------------------
+
+type family Zip (xs :: [k1]) (ys :: [k2]) :: [(k1, k2)] where
+    Zip '[]       '[]       = '[]
+    Zip (x ': xs) (y ': ys) = '(x, y) ': Zip xs ys
+
+type family Unzip (ps :: [(k1, k2)]) :: ([k1], [k2]) where
+    Unzip '[]       = '( '[], '[] )
+    Unzip (p ': ps) = Unzip' p (Unzip ps)
+
+type family Unzip' (p :: (k1, k2)) (ps :: ([k1], [k2])) :: ([k1], [k2]) where
+    Unzip' '(x, y) '(xs, ys) = '(x ': xs, y ': ys)
+
+-- | Run services from service stack, note that it is not necessary to run all
+-- of them, but it has to be a subset.
+class ServiceStackRunner a where
+    type RuntimeConfiguration' a :: *
+    type ExecutionMonad' a :: * -> *
+    type ExecutedServices a :: ([Symbol], [[(Symbol, *)]])
+
+    runServiceStack
+        ::  ( '(names, paramss) ~ ExecutedServices a
+            , HasServices names paramss stackNames stackParamss
+            , r ~ RuntimeConfiguration' a
+            , m ~ ExecutionMonad' a
+            , Rs paramss r
+            )
+        => r
+        -> ServiceStack r m stackNames stackParamss
+        -> a
+
+{- TODO: Instance ServiceStackRunner for ForkIO. This is just an idea and
+ -       ForkIO may be redesigned to accommodate.
+instance
+    ServiceStackRunner
+        (Proxy ('(names, paramss) :: ([Symbol], [[(Symbol, *)]])) -> ForkIO r)
+  where
+    type RuntimeConfiguration' (Proxy '(names, paramss) -> ForkIO r) = r
+    type ExecutionMonad' (Proxy '(names, paramss) -> ForkIO r) = IO
+    type ExecutedServices (Proxy '(names, paramss) -> ForkIO r) = '(names, paramss)
+
+    runServiceStack = let x = x in x
+-}
